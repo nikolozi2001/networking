@@ -1,4 +1,4 @@
-default:
-	clang -arch arm64 -x assembler -nostartfiles -Wl,-e,_start code.asm -o code
+dafault:
+	nasm -f macho64 code.asm -o code.o && ld code.o -o code -static -e _main
 run:
-	./code
+	./elf64
