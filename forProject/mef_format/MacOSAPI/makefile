@@ -1,11 +1,18 @@
 default:
-	nasm -f elf64 start.asm -o start.o && \
-	clang -nostdlib -static -O2 -c mef_format.c -o mef_format.o && \
-	ld -macosx_version_min 12.0 -e _start -o mef_loader start.o mef_format.o && \
+	clang -arch arm64 -c start.asm -o start.o && \
+	clang -arch arm64 -nostdlib -O2 -c mef_format.c -o mef_format.o && \
+	ld -arch arm64 -e _start -o mef_loader start.o mef_format.o -L$$(xcrun --show-sdk-path)/usr/lib -lSystem && \
+	codesign -s - --entitlements entitlements.plist -f mef_loader && \
 	rm -f start.o mef_format.o
 
-clean:
-	rm -f *.o
+gen_test_mef: gen_test_mef.c mef_format.h
+	clang -O2 -o gen_test_mef gen_test_mef.c
 
-run: default
-	./mef_loader
+test.mef: gen_test_mef
+	./gen_test_mef
+
+clean:
+	rm -f *.o mef_loader gen_test_mef test.mef
+
+run: default test.mef
+	./mef_loader test.mef
