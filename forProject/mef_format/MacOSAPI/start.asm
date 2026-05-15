@@ -15,6 +15,7 @@
 .global _sys_close
 .global _sys_mmap
 .global _sys_munmap
+.global _sys_mprotect
 .global _sys_exit
 
 .text
@@ -63,6 +64,12 @@ _sys_mmap:
 
 _sys_munmap:
     mov     x16, #73
+    svc     #0x80
+    b.cs    _syscall_err
+    ret
+
+_sys_mprotect:
+    mov     x16, #74
     svc     #0x80
     b.cs    _syscall_err
     ret

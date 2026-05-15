@@ -13,7 +13,7 @@ int main(void)
     // --- page 0: header + section table ---
     mef_hdr_t *hdr = (mef_hdr_t *)pages;
     hdr->magic      = MEF_HDR_MAGIC;
-    hdr->vm_load    = 0x200000;     // load address = 0x200000 * 4096 = 8 GB
+    hdr->vm_load    = 0x500000;     // load address = 0x500000 * 4096 = 0x500000000
     hdr->vm_size    = 2;            // 2 pages total
     hdr->cpu_type   = MEF_HDR_CPU_TYPE_AARCH_64;
     hdr->os_type    = MEF_HDR_OS_TYPE_MAC_OS;

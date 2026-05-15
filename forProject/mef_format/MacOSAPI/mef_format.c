@@ -9,6 +9,7 @@
 
 #define MAP_PRIVATE 0x02
 #define MAP_ANON    0x1000
+#define MAP_FIXED   0x10
 #define MAP_JIT     0x0800
 
 extern long     sys_write(int fd, const void *buf, uint64_t count);
@@ -19,7 +20,7 @@ extern int      sys_close(int fd);
 extern void*    sys_mmap(void *addr, uint64_t len, int prot, int flags, int fd, uint64_t offset);
 extern int      sys_munmap(void *addr, uint64_t len);
 extern void     sys_exit(int code);
-extern void     pthread_jit_write_protect_np(int enabled);
+extern int      sys_mprotect(void *addr, uint64_t len, int prot);
 extern void     sys_icache_invalidate(void *start, uint64_t size);
 
 static void memcpy_simple(void *dst, const void *src, uint64_t n) {
@@ -64,48 +65,34 @@ int mef_loader(int argc, char **argv)
         sys_close(fd); return 5;
     }
 
-    // JIT მეხსიერების გამოყოფა
+    // JIT მეხსიერების გამოყოფა vm_load მისამართზე
     uint64_t total = (uint64_t)hdr.vm_size * PAGE_SIZE;
-    void *base = sys_mmap(0, total, PROT_READ | PROT_WRITE | PROT_EXEC,
-                          MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+    void *wanted = (void *)((uint64_t)hdr.vm_load * PAGE_SIZE);
+    void *base = sys_mmap(wanted, total, PROT_READ | PROT_WRITE,
+                          MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
     if(base == (void*)-1) {
-        sys_write(2, "err: mmap jit\n", 14);
+        sys_write(2, "err: mmap fix\n", 14);
         sys_close(fd); return 9;
     }
 
-    // დროებითი ბუფერი ფაილის წასაკითხად
-    void *tmp = sys_mmap(0, total, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANON, -1, 0);
-    if(tmp == (void*)-1) {
-        sys_munmap(base, total);
-        sys_close(fd); return 9;
-    }
-
-    // JIT write mode
-    pthread_jit_write_protect_np(0);
-
-    // სექციების ჩატვირთვა: ფაილი → tmp → JIT
+    // სექციების ჩატვირთვა პირდაპირ base-ში (RW მოდში)
     for(int i = 0; i < hdr.sect_count; i++) {
         uint64_t off  = (uint64_t)sects[i].offset * PAGE_SIZE;
         uint64_t sz   = (uint64_t)sects[i].size * PAGE_SIZE;
 
         sys_lseek(fd, (long)off, 0);
-        long rd = sys_read(fd, (void *)((uint64_t)tmp + off), sz);
+        long rd = sys_read(fd, (void *)((uint64_t)base + off), sz);
         if(rd != (long)sz) {
             sys_write(2, "err: read sect\n", 15);
-            sys_munmap(tmp, total);
             sys_munmap(base, total);
             sys_close(fd); return 10;
         }
-        memcpy_simple((void *)((uint64_t)base + off),
-                      (void *)((uint64_t)tmp + off), sz);
     }
-    sys_munmap(tmp, total);
     sys_close(fd);
 
-    // icache invalidate + JIT exec mode
+    // RW → RX გადართვა
+    sys_mprotect(base, total, PROT_READ | PROT_EXEC);
     sys_icache_invalidate(base, total);
-    pthread_jit_write_protect_np(1);
 
     // entry point-ზე გადასვლა
     uint64_t entry_off = (uint64_t)sects[hdr.code_index].offset * PAGE_SIZE;
